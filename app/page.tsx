@@ -27,6 +27,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ColumnDef, tableFeatures, useTable } from "@tanstack/react-table";
+import { cn } from "cn";
 import { Controller, useForm } from "react-hook-form";
 import * as z from "zod";
 
@@ -34,6 +35,7 @@ type Webhook = {
   ID: number;
   EventName: string;
   TargetUrl: string;
+  Status: string; // "active", "paused", "disabled"
 };
 
 type APIResponse<T = unknown> = {
@@ -116,17 +118,40 @@ export default function Home() {
     {
       accessorKey: "ID",
       header: "ID",
-      cell: (info) => info.getValue(),
+      cell: (info) => (
+        <span className="text-xs">{info.getValue<string>()}</span>
+      ),
     },
     {
       accessorKey: "EventName",
       header: "Event",
-      cell: (info) => info.getValue(),
+      cell: (info) => (
+        <span className="text-xs">{info.getValue<string>()}</span>
+      ),
     },
     {
       accessorKey: "TargetUrl",
       header: "Target URL",
-      cell: (info) => info.getValue(),
+      cell: (info) => (
+        <span className="text-xs">{info.getValue<string>()}</span>
+      ),
+    },
+    {
+      accessorKey: "Status",
+      header: "Status",
+      cell: (info) => (
+        <div className="flex items-baseline gap-1">
+          <div
+            className={cn(
+              "rounded-full h-2 w-2",
+              info.getValue() == "active" && "bg-green-400",
+              info.getValue() == "disabled" && "bg-red-400",
+              info.getValue() == "paused" && "bg-yellow-400",
+            )}
+          />
+          <span className="text-xs">{info.getValue<string>()}</span>
+        </div>
+      ),
     },
   ];
 
@@ -190,7 +215,7 @@ export default function Home() {
           <CardFooter>
             <Field orientation="horizontal">
               <Button type="submit" form="webhook-form" size="lg">
-                Submit
+                {isCreating ? "creating..." : "submit"}
               </Button>
             </Field>
           </CardFooter>
