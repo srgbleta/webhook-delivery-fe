@@ -61,7 +61,7 @@ export default function Home() {
     queryKey: ["webhooks"],
     queryFn: async (): Promise<WebhooksResponse> => {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscriptions`,
+        `${process.env.NEXT_PUBLIC_API_URL}/webhooks`,
       );
 
       if (!response.ok) {
@@ -82,7 +82,7 @@ export default function Home() {
       targetUrl: string;
     }): Promise<Webhook> => {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscriptions`,
+        `${process.env.NEXT_PUBLIC_API_URL}/webhooks`,
         {
           method: "POST",
           headers: {
@@ -152,12 +152,9 @@ export default function Home() {
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="form-rhf-demo-title">
-                        Event
-                      </FieldLabel>
+                      <FieldLabel>Event</FieldLabel>
                       <Input
                         {...field}
-                        id="form-rhf-demo-title"
                         aria-invalid={fieldState.invalid}
                         placeholder="Event name"
                         autoComplete="off"
@@ -174,12 +171,9 @@ export default function Home() {
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="form-rhf-demo-title">
-                        Target URL
-                      </FieldLabel>
+                      <FieldLabel>Target URL</FieldLabel>
                       <Input
                         {...field}
-                        id="form-rhf-demo-title"
                         aria-invalid={fieldState.invalid}
                         placeholder="Target URL"
                         autoComplete="off"
@@ -204,9 +198,11 @@ export default function Home() {
       </div>
 
       <div className="border-l border-l-gray-300">
-        {isPending && <span>loading...</span>}
+        {isPending && <span className="text-xs">loading...</span>}
 
-        {!isPending && !data && <span>no subscriptions yet</span>}
+        {!isPending && !data && (
+          <span className="text-xs">no webhooks yet</span>
+        )}
 
         {!isPending && data && (
           <Table>
