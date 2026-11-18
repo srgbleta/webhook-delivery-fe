@@ -153,6 +153,55 @@ export default function Home() {
         </div>
       ),
     },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => {
+        const { mutate } = useMutation({
+          mutationKey: ["trigger", row.original.ID],
+          mutationFn: async ({
+            data,
+            eventName,
+          }: {
+            eventName: string;
+            data: any;
+          }) => {
+            const res = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL}/trigger`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  event_name: eventName,
+                  data,
+                }),
+              },
+            );
+
+            if (!res.ok) {
+              throw new Error("Failed to test webhook");
+            }
+
+            return await res.json();
+          },
+        });
+
+        function testWebhook() {
+          mutate({
+            eventName: row.original.EventName,
+            data: { demo: "hello world!" },
+          });
+        }
+
+        return (
+          <Button onClick={testWebhook} variant="outline" size={"sm"}>
+            Test
+          </Button>
+        );
+      },
+    },
   ];
 
   const table = useTable({
