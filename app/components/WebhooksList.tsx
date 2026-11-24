@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -10,10 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ColumnDef, tableFeatures, useTable } from "@tanstack/react-table";
 import { cn } from "cn";
-import { toast } from "sonner";
+import { TestWebhookButton } from "./TestWebhookButton";
 
 export function WebhooksList() {
   const { data, isPending } = useQuery({
@@ -74,56 +73,7 @@ export function WebhooksList() {
     {
       id: "actions",
       header: "Actions",
-      cell: ({ row }) => {
-        const { mutate } = useMutation({
-          mutationKey: ["trigger", row.original.ID],
-          mutationFn: async ({
-            data,
-            eventName,
-          }: {
-            eventName: string;
-            data: any;
-          }) => {
-            const res = await fetch("/api/trigger", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                eventName,
-                data,
-              }),
-            });
-
-            const body = await res.json();
-
-            if (!res.ok) {
-              throw new Error(body.error?.message ?? "Failed to test webhook");
-            }
-
-            return body;
-          },
-          onSuccess: () => {
-            toast.success("Test event submitted");
-          },
-          onError: (error) => {
-            toast.error(error.message);
-          },
-        });
-
-        function testWebhook() {
-          mutate({
-            eventName: row.original.EventName,
-            data: { demo: "hello world!" },
-          });
-        }
-
-        return (
-          <Button onClick={testWebhook} variant="outline" size={"sm"}>
-            Test
-          </Button>
-        );
-      },
+      cell: ({ row }) => <TestWebhookButton webhook={row.original} />,
     },
   ];
 
