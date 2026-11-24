@@ -1,0 +1,8 @@
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      API_URL: ${API_URL:?Set API_URL}
+    restart: unless-stopped
