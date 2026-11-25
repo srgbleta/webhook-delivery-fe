@@ -1,0 +1,150 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: frontend-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Find successful CI build for this commit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RUN=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&status=success&event=push&per_page=1" \
+            --jq '.workflow_runs[0]')
+
+          if [[ "$RUN" == "null" || -z "$RUN" ]]; then
+            echo "No successful CI build for this commit. Wait for CI, then run Deploy again."
+            exit 1
+          fi
+
+          RUN_ID=$(jq -r '.id' <<< "$RUN")
+          ATTEMPT=$(jq -r '.run_attempt' <<< "$RUN")
+          TAG="${GITHUB_SHA}-${RUN_ID}-${ATTEMPT}"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check out matching configuration
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github-deploy
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<'EOF'
+          Host frontend-vm
+            HostName 100.93.241.11
+            User ubuntu
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 30
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Transfer Compose configuration
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          ssh frontend-vm \
+            "mkdir -p ~/webhook-frontend-releases/$RELEASE_TAG"
+
+          scp compose.yaml \
+            "frontend-vm:webhook-frontend-releases/$RELEASE_TAG/compose.yaml"
+
+      - name: Deploy and verify
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          ssh frontend-vm "bash -s -- '$RELEASE_TAG'" <<'REMOTE'
+          set -euo pipefail
+
+          TAG="$1"
+          cd "$HOME/webhook-frontend-releases/$TAG"
+
+          printf 'FRONTEND_IMAGE=ghcr.io/srgbleta/webhook-frontend:%s\n' "$TAG" \
+            > release.env
+
+          compose() {
+            sudo -n docker compose \
+              -p webhook-delivery-fe \
+              --env-file "$HOME/webhook-delivery-fe/.env" \
+              --env-file release.env \
+              -f compose.yaml \
+              "$@" < /dev/null
+          }
+
+          # Download the image before replacing the running container.
+          compose pull frontend
+
+          # Replace the frontend with the selected release.
+          compose up -d --no-deps --no-build frontend
+
+          # Check that Next.js responds.
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error \
+              --max-time 5 \
+              http://127.0.0.1:3000/ > /dev/null; then
+              ln -sfn "$PWD" "$HOME/webhook-frontend-current"
+              echo "Deployment verified: $TAG"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          compose logs --tail=50 frontend
+          echo "Deployment verification failed."
+          exit 1
+          REMOTE
+
+      - name: Write deployment summary
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          echo "Deployment verified: $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image: ghcr.io/srgbleta/webhook-frontend:$RELEASE_TAG" \
+            >> "$GITHUB_STEP_SUMMARY"
